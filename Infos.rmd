@@ -1,0 +1,27 @@
+---
+title: "Informations"
+author: "Bastien Delseny"
+date: "8 mars 2016"
+output: pdf_document
+---
+
+-------------------------------------
+
+# Informations générales
+
+Anne-Sophie a commencée à faire des résumés des stats de Machine Learning et Multivariées.
+Du coup, un truc intéressant serait d'améliorer tout ça en ajoutant du texte à ce qu'elle a déjà commencée à faire. 
+
+L'idée derrière : 
+
+* Avoir une base solide et pratique pour nous aider à retomber sur nos stats. Et pourquoi pas partager notre travail accomplis avec plus de gens.
+
+
+Pourquoi nous ? Je reprendrai une citation de Men In Black : *"Parce qu'on est les meilleurs des meilleurs des meilleurs chef !"* (Et aussi parce qu'Anne-Sophie et moi on vous a choisis, quel privilège)
+
+# En cours
+
+
+* Utiliser RMarkdown sous Rstudio pour faire des jolis pdf de manière simple avec du code R.
+* Utiliser Git et GitHub pour simplifier et améliorer le suivi de l'évolution de nos fichiers RMarkdown.
+
