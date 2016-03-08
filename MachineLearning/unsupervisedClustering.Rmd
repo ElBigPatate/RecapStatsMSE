@@ -24,6 +24,8 @@ library(MASS)
 #Functions
 ##Rand index (Hubert and Arabie) #
 ```{r AdjRkl}
+#Plus ou moins un test du Chi-deux
+
 AdjRkl <- function(part1, part2)
 {
   confusion <- table(part1, part2)
@@ -113,7 +115,17 @@ silouhette_plot <- function(x, dist, dendro, k)
   plot(silo, main="Silhouette plot - Chord",
        cex.names=0.8, col=cutg+1, nmax.lab=100)
 }
+
 ```
+Ce que le graphe nous montre :
+
+* Couleurs : répartition des individus dans un groupe --> 1 couleur = 1 groupe
+ 
+* Axe Silhouette width : mesure de similarité de l'individu avec son propre cluster --> Barre colorée grande (proche de 1) = individu en harmonie avec son cluster
+
+* Nombres à coté des barres colorées : numéro du cluster, nombre d'individus dans le cluster, moyenne des mesures de similarité des individus composant le cluster --> valeur proche de 1 = cluster homogène
+
+* Average silhouette width : homogénéité moyenne --> valeur proche de 1 = clustering homogène possible
 
 ##Plot cluster on a map if coordinates are available
 ```{r cluster_map}
