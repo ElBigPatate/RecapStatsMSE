@@ -19,9 +19,73 @@ L'idée derrière :
 
 Pourquoi nous ? Je reprendrai une citation de Men In Black : *"Parce qu'on est les meilleurs des meilleurs des meilleurs chef !"* (Et aussi parce qu'Anne-Sophie et moi on vous a choisis, quel privilège)
 
+-----
+
 # En cours
 
 
 * Utiliser RMarkdown sous Rstudio pour faire des jolis pdf de manière simple avec du code R.
 * Utiliser Git et GitHub pour simplifier et améliorer le suivi de l'évolution de nos fichiers RMarkdown.
 
+----------
+
+# RMarkdown sous RStudio
+
+## Comment faire ?
+
+Sous RStudio c'est assez simple pour utiliser RMarkdown.
+Pour l'installer il suffit d'aller dans 'fichiers' puis 'nouveau fichier' et enfin lancer un 'R Markdown'.
+Normalement le logiciel va vous parler et ça se fera tout seul.
+Sinon je vous invite à lire la prochaine section et à chercher sur google, ça se trouve assez facilement.
+
+## Liens utiles
+
+Voici le site de [RMarkdown](http://rmarkdown.rstudio.com/).
+Je vous conseil de regarder le [Quick Tour](http://rmarkdown.rstudio.com/authoring_quick_tour.html) et les [Bases](http://rmarkdown.rstudio.com/authoring_basics.html) pour écrire.
+Je vous laisse découvrir en lisant ce qu'à déjà fait Anne-Sophie, et en lisant la doc.
+
+------------
+
+# GitHub et RStudio
+
+## Les bases
+
+### GitHub
+
+C'est un endrois merveilleux ou vous pouvez stocker vos fichiers, notamment les scripts.
+L'avantage par rapport à Google Drive ? Ça permet de suivre directement l'évolution des scripts, les suppression et ajout de lignes par exemple. Et on peut même envoyer nos fichiers en même temps ça merdera pas (pas de conflis de versions).
+
+### Sous RStudio
+
+Notre ami RStudio permet de gérer les directement ce qu'on envoie à GitHub. Et ça c'est pratique et cool.
+
+## Comment qu'on fait ?
+
+Je suis pas assez expérimenter pour écrire l'ensemble de la démarche alors j'envoie ailleurs [Tuto](https://support.rstudio.com/hc/en-us/articles/200532077-Version-Control-with-Git-and-SVN).
+
+## Le GitHub
+
+Pour accéder au dépot GitHub il faudra cliquer [**ICI**](https://github.com/ElBigPatate/RecapStatsMSE) !
+Y'aura le lien pour configurer le GitHub et RStudio. Je conseil de prendre le lien Http sous Windows et le lien SSH pour Linux et Mac.
+**Attention** les Linuxiens et MACqueux il faut une clés ssh publique sur vos machines pour que ça marche. Petit [lien](https://help.github.com/articles/generating-an-ssh-key/) qui devrait aider, je sais pas si sous Mac c'est la même.
+
+## Utilisation
+
+Sous RStudio le projet GitHub apparaîtra en haut à droite 'RecapStatsMSE'. Si ça n'apparaît pas c'est que vous ne travaillez pas sur le projet.
+Ensuite à côté des icones pour enregistrer votre travail vous verrez une nouvelle icone (Noir Rouge et Vert) avec écrit GIT.
+Si vous cliquez dessus vous pourrez 'Commit' (sauf autre nom en français), ça vous ouvre une fenêtre avec les fichiers modifiés (si y'a rien aucun n'a été modifié).
+Cochez celui que vous voulez et mettez un commentaire à droite (en-dessous y'aura vos lignes supprimées en rouge et ajoutées en vert).
+Et refaite ça pour chaque fichier midifé.
+Une fois que c'est fait vous fait 'pull' la flèche en haut à droite qui monte.
+
+### Important
+
+Premier truc à faire avant de commencer à bosser c'est de 'pull' (récupérer) les midifications effectuez par les autres. Pour ça vous cliquez sur l'icône GIT et puis 'pull' (flèche bleue qui descend).
+Quand vous bosser vous fait un commit dès que vous faite une modification (genre 1 paragraphe c'est cool) soyez concis et explicites dans les commentaires (qu'on sache d'un coup d'oeil la grosse modif).
+Vous n'êtes pas obligés de push à chaque fois que vous faite un commit. Mais vous pouvez le faire une fois l'ensemble de votre boulot terminé (genre quand vous arrétez de bosser dessus).
+
+-----
+
+# Remarques
+
+J'ai écrit tout ça assez vite, du coupe je m'attend pas à ce que vous ayez tout pigé. Si vous avez des soucis envoyez moi un mail explicite sur le problème, je répondrai quand je pourrai et j'essayerai de répondre et d'améliorer ce fichier-ci.
