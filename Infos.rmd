@@ -34,7 +34,7 @@ Pourquoi nous ? Je reprendrai une citation de Men In Black : *"Parce qu'on est l
 ## Comment faire ?
 
 Sous RStudio c'est assez simple pour utiliser RMarkdown.
-Pour l'installer il suffit d'aller dans 'fichiers' puis 'nouveau fichier' et enfin lancer un 'R Markdown'.
+Pour l'installer il suffit d'aller dans `fichiers` puis `nouveau fichier` et enfin lancer un `R Markdown`.
 Normalement le logiciel va vous parler et ça se fera tout seul.
 Sinon je vous invite à lire la prochaine section et à chercher sur google, ça se trouve assez facilement.
 
@@ -71,16 +71,16 @@ Y'aura le lien pour configurer le GitHub et RStudio. Je conseil de prendre le li
 
 ## Utilisation
 
-Sous RStudio le projet GitHub apparaîtra en haut à droite 'RecapStatsMSE'. Si ça n'apparaît pas c'est que vous ne travaillez pas sur le projet.
+Sous RStudio le projet GitHub apparaîtra en haut à droite `RecapStatsMSE`. Si ça n'apparaît pas c'est que vous ne travaillez pas sur le projet.
 Ensuite à côté des icones pour enregistrer votre travail vous verrez une nouvelle icone (Noir Rouge et Vert) avec écrit GIT.
-Si vous cliquez dessus vous pourrez 'Commit' (sauf autre nom en français), ça vous ouvre une fenêtre avec les fichiers modifiés (si y'a rien aucun n'a été modifié).
+Si vous cliquez dessus vous pourrez `Commit` (sauf autre nom en français), ça vous ouvre une fenêtre avec les fichiers modifiés (si y'a rien aucun n'a été modifié).
 Cochez celui que vous voulez et mettez un commentaire à droite (en-dessous y'aura vos lignes supprimées en rouge et ajoutées en vert).
 Et refaite ça pour chaque fichier midifé.
-Une fois que c'est fait vous fait 'pull' la flèche en haut à droite qui monte.
+Une fois que c'est fait vous fait `push` la flèche en haut à droite qui monte.
 
 ### Important
 
-Premier truc à faire avant de commencer à bosser c'est de 'pull' (récupérer) les midifications effectuez par les autres. Pour ça vous cliquez sur l'icône GIT et puis 'pull' (flèche bleue qui descend).
+Premier truc à faire avant de commencer à bosser c'est de `pull`(récupérer) les midifications effectuez par les autres. Pour ça vous cliquez sur l'icône GIT et puis `pull` (flèche bleue qui descend).
 Quand vous bosser vous fait un commit dès que vous faite une modification (genre 1 paragraphe c'est cool) soyez concis et explicites dans les commentaires (qu'on sache d'un coup d'oeil la grosse modif).
 Vous n'êtes pas obligés de push à chaque fois que vous faite un commit. Mais vous pouvez le faire une fois l'ensemble de votre boulot terminé (genre quand vous arrétez de bosser dessus).
 
