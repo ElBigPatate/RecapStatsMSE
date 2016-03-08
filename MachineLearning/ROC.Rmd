@@ -1,0 +1,115 @@
+---
+title: "ROC Curve"
+output: html_document
+---
+
+#Library
+```{r library}
+library(MASS)
+library(irr)
+library(epibasix)
+library(vcd)
+library(ade4)
+library(rpart)
+library(e1071)
+library(randomForest)
+library(pls) 
+library(nnet)
+library(AMORE)
+library(FactoMineR)
+library(mgcv)
+library(car) 
+library(gam)
+library(spacemakeR)
+library(packfor)
+library(AEM)
+library(vegan)
+library(ROCR)
+```
+
+#Data rpjdl
+##Prepare
+```{r rpjdl}
+data(rpjdl)
+fau <- rpjdl$fau
+fau.norm <- decostand(fau, "normalize")
+mil.norm <- decostand(rpjdl$mil, "normalize")
+tm <- fau$TM
+```
+
+##Sample
+```{r sample}
+set.seed(56)
+samp <- sample(1:length(tm), length(tm)/3*2)
+```
+
+##Random forest prediction
+```{r random_forest}
+tm.rf <- randomForest(as.factor(tm[samp]) ~. , data = mil.norm[samp,])
+tm.rf.pred <- predict(tm.rf, mil.norm[-samp,])
+tm.table <- cbind(tm[-samp],tm.rf.pred)
+
+ftable(tm[-samp],tm.rf.pred)
+Kappa(ftable(tm[-samp],tm.rf.pred))
+
+agreementplot(ftable(tm[-samp],tm.rf.pred))
+```
+
+##ROC curve Random forest
+```{r ROCR_function_RF}
+pred <- prediction(as.numeric(tm.rf.pred), tm[-samp])
+perf <- performance(pred, "tpr", "fpr")
+perf2 <- performance(pred, "auc")
+perf2@y.values[[1]] #@ -> $ for S4 class
+
+plot(perf) ; abline(0,1)
+```
+
+##LDA prediction
+```{r lda}
+tm.lda <- lda(as.factor(tm[samp]) ~. , data = mil.norm[samp,])
+tm.lda.pred <- predict(tm.lda, mil.norm[-samp,])
+tm.lda.table <- ftable(tm[-samp],tm.lda.pred$class)
+```
+
+##ROC curve LDA
+```{r ROCR_function_LDA}
+pred.lda <- prediction(as.numeric(tm.lda.pred$class), tm[-samp])
+perf.lda <- performance(pred.lda, "tpr", "fpr")
+perf2.lda <- performance(pred.lda, "auc")
+perf2.lda@y.values[[1]]
+plot(perf.lda) ; abline(0,1)
+```
+
+
+#Data Iris
+##New variable
+```{r iris}
+iris$isv <- as.numeric(iris$Species == "versicolor")
+```
+
+##GLM
+```{r glm_iris}
+isv.glm <- glm(iris$isv ~ Sepal.Length + Sepal.Width , data = iris, family = "binomial")
+```
+
+##Prediction sur le GLM
+```{r ROCR_function_GLM}
+isv.pred <- prediction(predict(isv.glm), iris$isv)
+isv.perf <- performance(isv.pred, "tpr","fpr")
+plot(isv.perf, colorize = T)
+isv.perf.auc <- performance(isv.pred, "auc")
+isv.perf.auc@y.values[[1]]
+```
+
+##Jolie ROC curve
+```{r ROC_curve_paint}
+plot(isv.perf, main="ROCR fingerpainting toolkit", colorize=TRUE,
+     xlab="Mary's axis", ylab="", box.lty=7, box.lwd=5,
+     box.col="gold", lwd=17, colorkey.relwidth=0.5, xaxis.cex.axis=2,
+     xaxis.col='blue', xaxis.col.axis="blue", yaxis.col='green', yaxis.cex.axis=1,
+     yaxis.at=c(0,0.5,0.8,0.85,0.9,1), yaxis.las=1, xaxis.lwd=2, yaxis.lwd=3,
+     yaxis.col.axis="orange", cex.lab=2, cex.main=2)
+```
+
+

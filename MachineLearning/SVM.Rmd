@@ -1,0 +1,168 @@
+---
+title: "SVM"
+output: html_document
+---
+
+#Library
+```{r library}
+library(MASS)
+library(irr)
+library(vcd)
+library(ade4)
+library(rpart)
+library(e1071)
+library(randomForest)
+library(FactoMineR)
+library(car) 
+library(vegan)
+```
+
+#Functions
+##Rand index (Hubert and Arabie) #
+```{r AdjRkl}
+AdjRkl <- function(part1, part2)
+{
+  confusion <- table(part1, part2)
+  
+  n <- sum(confusion)
+  a <- sum(choose(confusion[confusion>1], 2))
+  b <- apply(confusion, 1, sum)
+  b <- sum(choose(b[b>1], 2))
+  c <- apply(confusion, 2, sum)
+  c <- sum(choose(c[c>1], 2))
+  
+  Rexp <- b*c/choose(n,2)
+  (a - Rexp) / (.5*(b+c) - Rexp )
+}
+```
+
+#Iris
+```{r iris}
+data(iris)
+```
+
+##Prepare data
+```{r sample_3fold}
+set.seed(120)
+samp=sample(1:nrow(iris), nrow(iris)/3)
+train.x=iris[-samp, -5] #X variables
+test.x=iris[samp, -5] #Data for verification
+train.y=iris[-samp, 5] #Y variables
+test.y=iris[samp, 5]
+```
+
+##K-fold
+Train a support vector machine
+Carry out general regression and classification
+
+```{r SVM}
+iris.svm <- svm(factor(train.y) ~. ,data = train.x)
+summary(iris.svm)
+print(iris.svm)
+```
+
+```{r SVM_prediction}
+iris.svm.prediction <- predict(iris.svm, test.x)
+```
+
+```{r Kfold_prediction_efficiency}
+table(iris.svm.prediction, test.y)
+kappa2(cbind(test.y, iris.svm.prediction))
+Kappa(table(test.y, iris.svm.prediction))
+AdjRkl(test.y, iris.svm.prediction) 
+agreementplot(table(test.y, iris.svm.prediction), main = "Predict SVM")
+```
+
+```{r prediction_plot}
+plot(cmdscale(dist(iris[,-5])),
+     col = as.integer(iris[,5]),
+     pch = c("o","+")[1:150 %in% iris.svm$index +1]) #o pour le training et + pour le test
+```
+
+
+##Leave On Out - LOO
+```{r LOO}
+ans = NULL
+for (i in 1:nrow(iris))
+{
+  iris.svm.loo = svm(iris[-i,-5],iris[-i,5])
+  iris.svm.pred = predict(iris.svm.loo, iris[i,-5])
+  ans = c(ans, iris.svm.pred)
+}
+ans = factor(ans,labels=c("Setosa", "Versicolor", "virginica"))
+```
+
+```{r LOO_prediction_efficiency}
+table(ans,iris$Species)
+kappa2(cbind(ans, iris$Species))
+Kappa(table(ans, iris$Species))
+AdjRkl(ans, iris$Species)
+agreementplot(table(ans,iris$Species))
+```
+
+
+
+#Rpjdl data
+##Prepare Data
+```{r rpjdl}
+data(rpjdl)
+fau <- rpjdl$fau
+
+sr.rpjdl <- apply(fau, 1, sum) #Richesse spécifique
+mil <- rpjdl$mil
+mil.norm <- decostand(mil, "normalize")
+occur <- sort(apply(fau, 2, sum)/nrow(fau)*100)
+```
+
+##Corrélations entre milieu et richesse spécifique
+```{r correlation}
+plot(cbind(mil, sr.rpjdl))
+cor(cbind(mil, sr.rpjdl))
+```
+
+##Plot des corrélations
+```{r function_panelcor}
+panel.cor <- function(x, y, digits=2, prefix="", cex.cor, ...)
+{
+  usr <- par("usr"); on.exit(par(usr))
+  par(usr = c(0, 1, 0, 1))
+  r <- abs(cor(x, y))
+  txt <- format(c(r, 0.123456789), digits=digits)[1]
+  txt <- paste(prefix, txt, sep="")
+  if(missing(cex.cor)) cex.cor <- 0.8/strwidth(txt)
+  text(0.5, 0.5, txt, cex = cex.cor * r)
+}
+```
+
+```{r}
+pairs(cbind(mil.norm,sr.rpjdl), lower.panel=panel.smooth, 
+      upper.panel=panel.cor)
+```
+
+##Choix des variables explicativces
+```{r select}
+mil.select <- mil.norm[,c(1:3, 8)]
+```
+
+```{r sample_select}
+set.seed(201)
+samp=sample(1:length(sr.rpjdl), length(sr.rpjdl)/4)
+train.x=mil.select[-samp, ] #X variables
+test.x=mil.select[samp, ] #Data for verification
+train.y=sr.rpjdl[-samp] #Y variables
+test.y=sr.rpjdl[samp]
+```
+
+```{r SVM_rpjdl}
+rpjdl.svm <- svm(train.y ~. ,data = train.x)
+summary(rpjdl.svm)
+```
+
+```{r prediction}
+rpjdl.svm.prediction <- predict(rpjdl.svm, test.x)
+
+plot(test.y, rpjdl.svm.prediction, xlim = c(3,20), ylim = c(3,20),
+     main = "Prediction of SVM") ; abline(0,1)
+
+cor(test.y, rpjdl.svm.prediction)^2
+```

@@ -1,0 +1,94 @@
+---
+title: "Multivariée - Cours 2"
+output: html_document
+---
+
+#Library
+```{r library}
+library(ade4)
+library(MASS)
+library(vegan)
+```
+
+#Rappel - Notion de distance du chi-deux
+##Data logement
+
+```{r}
+logement <- read.delim("G:/Cours/M2_MSE/Multivarie/logement.txt")
+
+tab = table(logement$Mode, logement$Type)
+tab
+res = chisq.test(tab)
+res
+res$expecte
+```
+
+#Analyse Factorielle des Correspondances (AFC)
+##Data logement
+```{r}
+tab = as.data.frame.matrix(tab)
+afc1 = dudi.coa(tab, scannf = FALSE, nf = 2)
+barplot(afc1$eig)
+
+scatter(afc1)
+par(mfrow=c(1,2))
+s.label(afc1$co)
+s.label(afc1$li)
+
+par(mfrow=c(1,1))
+score(afc1) #Axe 1
+```
+
+##Data atlas
+```{r}
+data(atlas)
+atlas$bird
+
+afc2 = dudi.coa(atlas$bird, scannf = FALSE, nf = 2)
+scatter(afc2)
+score(afc2)
+area.plot(atlas$area, , afc2$li[,1], sub = "Axe1", csub = 2)
+```
+
+#Analyse des Correspondances Multiples (ACM)
+##Data logement
+```{r}
+acm1 = dudi.acm(logement, scannf = FALSE, nf = 2) #Fait des tableaux disjonctifs complets
+scatter.dudi(acm1)
+scatter(acm1)
+boxplot(acm1)
+acm1$cr
+```
+
+#Analyse Canonique des Correspondances (ACC)
+##Data atlas
+```{r}
+atlas$meteo
+
+#En premier le tableau espèce et ensuite le tableau environnement
+acc1 = cca(atlas$birds, atlas$meteo) 
+plot(acc1) #Triplot
+```
+
+##Test global
+```{r}
+anova(acc1)
+```
+
+##Test effets variables explicatives
+```{r}
+envfit(acc1, atlas$meteo, permutations = 1000)
+```
+
+##Autre écriture
+```{r}
+acc2 = cca(atlas$birds ~ mini.jan + maxi.jan + rain.jan, atlas$meteo)
+anova(acc2, by = "term", step = 1000)
+```
+
+##Test effet variable supplémentaire
+```{r}
+anova(cca(atlas$birds ~rain.tot + Condition(mini.jan + maxi.jul), atlas$meteo), step = 40)
+```
+
+

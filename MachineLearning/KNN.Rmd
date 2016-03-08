@@ -1,0 +1,92 @@
+---
+title: "KNN"
+output: html_document
+---
+
+#Library
+```{r library}
+library(MASS)
+library(ade4)
+library(car) 
+library(vegan)
+library(class)
+```
+
+#Iris
+```{r iris}
+data(iris)
+```
+
+##Prepare data
+```{r sample_3fold}
+set.seed(120)
+samp=sample(1:nrow(iris), nrow(iris)/3)
+train.x=iris[-samp, -5] #X variables
+test.x=iris[samp, -5] #Data for verification
+train.y=iris[-samp, 5] #Y variables
+test.y=iris[samp, 5]
+```
+
+##KNN
+k-nearest neighbourg classification for test set from training set
+Classification decided by majority vote
+
+```{r normalize}
+#Normalize because very sensitive
+test.x.norm <- decostand(test.x, "normalize")
+train.x.norm <- decostand(train.x, "normalize")
+```
+
+```{r KNN}
+#Normalize because very sensitive
+iris.knn<-knn(train.x.norm, test.x.norm, cl = train.y, k = 11, prob = T)
+summary(iris.knn)
+```
+
+```{r KNN_efficiency}
+table(iris.knn,test.y)
+Kappa(table(iris.knn,test.y))
+AdjRkl(iris.knn,test.y) 
+agreementplot(table(iris.knn,test.y))
+```
+
+
+#Data rpjdl
+##Prepare
+```{r rpjdl}
+data(rpjdl)
+fau <- rpjdl$fau
+fau.norm <- decostand(fau, "normalize")
+mil.norm <- decostand(rpjdl$mil, "normalize")
+tm <- fau$TM
+sr.rpjdl <- apply(fau, 1, sum) #Richesse spécifique
+```
+
+##Sample
+
+```{r sample_select}
+set.seed(201)
+samp=sample(1:length(sr.rpjdl), length(sr.rpjdl)/4)
+train.x=mil.norm[-samp, ] #X variables
+test.x=mil.norm[samp, ] #Data for verification
+train.y=sr.rpjdl[-samp] #Y variables
+test.y=sr.rpjdl[samp]
+```
+
+##KNN
+```{r}
+sr.rpjdl.knn <- knn(train.x, test.x, as.factor(train.y), k = 11, prob = T)
+sr.rpjdl.knn
+summary(sr.rpjdl.knn)
+```
+
+```{r KNN_efficiency}
+ftable(test.y, sr.rpjdl.knn)
+plot(test.y, as.numeric(sr.rpjdl.knn), xlim = c(3,20), ylim = c(3,20),
+     main = "Prediction of KNN") ; abline(0,1)
+
+cor(as.numeric(sr.rpjdl.knn), test.y)
+kappa2(cbind(sr.rpjdl.knn, test.y))
+
+AdjRkl(test.y, sr.rpjdl.knn)
+```

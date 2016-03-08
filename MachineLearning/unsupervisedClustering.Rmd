@@ -1,0 +1,957 @@
+---
+title: "Unsupervised clustering"
+output:
+  html_document:
+    theme: journal
+  pdf_document: default
+---
+
+# Library
+```{r library}
+library(ade4)
+library(vegan)
+library(gclus)
+library(cluster)
+library(rgl)
+library(scatterplot3d)
+library(e1071)
+library(multcompView)
+library(labdsv)
+library(kohonen)
+library(MASS)
+```
+
+#Functions
+##Rand index (Hubert and Arabie) #
+```{r AdjRkl}
+AdjRkl <- function(part1, part2)
+{
+  confusion <- table(part1, part2)
+  
+  n <- sum(confusion)
+  a <- sum(choose(confusion[confusion>1], 2))
+  b <- apply(confusion, 1, sum)
+  b <- sum(choose(b[b>1], 2))
+  c <- apply(confusion, 2, sum)
+  c <- sum(choose(c[c>1], 2))
+  
+  Rexp <- b*c/choose(n,2)
+  (a - Rexp) / (.5*(b+c) - Rexp )
+}
+```
+
+##Choose number of clusters
+```{r Rousseuw}
+Rousseuw <- function(x, dist, dendro = NULL, k) 
+{
+  asw <- numeric(nrow(x))
+  for (k in 2:(nrow(x)-1))
+    {
+      sil <- silhouette(cutree(dendro, k=k), dist)
+      asw[k] <- summary(sil)$avg.width
+    }
+  k.best <- which.max(asw)
+  
+  # The plot is produced by function plot.silhouette {cluster}
+  plot(1:nrow(x), asw, type="h",
+       main="Silhouette-optimal number of clusters",
+       xlab="k (number of groups)", ylab="Average silhouette width")
+  axis(1, k.best, paste("optimum",k.best,sep="\n"), col="red", font=2,
+       col.axis="red")
+  points(k.best, max(asw), pch=16, col="red", cex=1.5)
+  cat("", "Silhouette-optimal number of clusters k =", k.best, "\n",
+      "with an average silhouette width of", max(asw), "\n")
+}
+```
+
+##Choose number of clusters for PAM
+```{r Rousseuw_PAM}
+Rousseuw_PAM <- function (x, dist, k)
+{
+  asw <- numeric(nrow(spe))
+  
+  for (k in 2:(nrow(spe)-1))
+    asw[k] <- pam(spe.ch, k, diss=TRUE)$silinfo$avg.width
+  k.best <- which.max(asw)
+  cat("", "Silhouette-optimal number of clusters k =", k.best, "\n",
+      "with an average silhouette width of", max(asw), "\n")
+  plot(1:nrow(spe), asw, type="h", main="Choice of the number of clusters",
+       xlab="k (number of groups)", ylab="Average silhouette width")
+  axis(1, k.best, paste("optimum",k.best,sep="\n"), col="red", font=2,
+       col.axis="red")
+  points(k.best, max(asw), pch=16, col="red", cex=1.5)
+}
+```
+
+##plot cluster with colors on dendrogram
+```{r hcoplot}
+hcoplot <- function(tree, diss, k, title=paste("Reordered dendrogram from",deparse(tree$call),sep="\n")) 
+{
+  require(gclus)
+  gr <- cutree(tree, k=k)
+  tor <- reorder.hclust(tree, diss)
+  plot(tor, hang=-1, xlab=paste(length(gr),"sites"), sub=paste(k,"groups"), main=title)
+  so <- gr[tor$order]
+  gro <- numeric(k)
+  for (i in 1:k) {
+    gro[i] <- so[1]
+    if (i<k) so = so[so!=gro[i]]
+  }
+  rect.hclust(tor, k=k, border=gro+1, cluster=gr)
+  legend("topright", paste("Group",1:k), pch=22, col=2:(k+1), bty="n")
+}
+```
+
+##Silouhette plot
+```{r silouhette_plot}
+silouhette_plot <- function(x, dist, dendro, k)
+{
+  cutg <- cutree(dendro, k=k)
+  sil <- silhouette(cutg, dist)
+  silo <- sortSilhouette(sil)
+  rownames(silo) <- row.names(x)[attr(silo,"iOrd")]
+  plot(silo, main="Silhouette plot - Chord",
+       cex.names=0.8, col=cutg+1, nmax.lab=100)
+}
+```
+
+##Plot cluster on a map if coordinates are available
+```{r cluster_map}
+cluster_map <- function(coor, cutree)
+{
+  plot(coor, asp=1, type="n", main="Four Ward groups",
+       xlab="x coordinate (km)", ylab="y coordinate (km)")
+  lines(coor, col="light blue")
+  text(50, 10, "Upstream", cex=1.2, col="red")
+  text(25, 115, "Downstream", cex=1.2, col="red")
+  
+  # Add the four groups
+  grw <- cutree
+  k <- length(levels(factor(grw)))
+  for (i in 1:k) {
+    points(coor[grw==i,1], coor[grw==i,2], pch=i+20, cex=3, col=i+1, bg=i+1)
+  }
+  text(coor, row.names(coor), cex=0.8, col="white", font=2)
+  legend("bottomright", paste("Group",1:k), pch=(1:k)+20, col=2:(k+1),
+         pt.bg=2:(k+1), pt.cex=2, bty="n")
+}
+```
+
+##Abundant species in clusters
+```{r}
+abundant_groups <- function (x, cluster)
+{
+  groups <- as.factor(spe.kmeans$cluster)
+  spe.means <- matrix(0, ncol(spe), length(levels(groups)))
+  row.names(spe.means) <- colnames(spe)
+  for(i in 1:ncol(spe)) 
+  {
+    spe.means[i,] <- tapply(spe[,i], spe.kmeans$cluster, mean)
+  }
+  return(spe.means)
+}
+```
+
+##Indicator species in clusters (Dufrene and Legendre)
+```{r indicator}
+indicator <- function(x, y, k)
+{
+  das.D1 <- dist(data.frame(das=y[,1], row.names=rownames(y)))
+  dasD1.kmeans <- kmeans(das.D1, centers=k, nstart=100)
+  dasD1.kmeans$cluster
+  
+  #Indicator species for this typology of the sites
+  iva <- indval(x, dasD1.kmeans$cluster)
+  iva
+  
+  #Table of the significant indicator species
+  gr <- iva$maxcls[iva$pval<=0.05]
+  iv <- iva$indcls[iva$pval<=0.05]
+  pv <- iva$pval[iva$pval<=0.05]
+  fr <- apply(x>0, 2, sum)[iva$pval<=0.05]
+  fidg <- data.frame(group=gr, indval=iv, pvalue=pv, freq=fr)
+  fidg <- fidg[order(fidg$group, -fidg$indval),]
+  return(fidg)
+}
+```
+
+# Data
+## Read 
+```{r data}
+data(doubs)
+data(iris)
+data(lascaux)
+```
+
+## Rename
+```{r}
+#Doubs
+spe <- doubs$fish
+env <- doubs$env
+spa <- doubs$xy
+```
+
+```{r}
+#Iris
+iris.var <- iris[,c(1:4)]
+```
+
+#Matrices de distances
+```{r distance_matrix}
+# Verify if empty sites exist
+apply(spe, 1, max)
+
+# Remove the site where there is no fish
+spe = spe[-8,]
+env = env[-8,]
+spa = spa[-8,]
+
+# Check heterogeneity
+boxplot(spe) 
+
+# Normalize (scale between 0 and 1)
+# Standardize (scale between -3 and 3)
+spe.norm <- decostand (spe, "normalize")
+boxplot(spe.norm)
+
+# Matrix distance
+spe.ch <- dist(spe.norm)
+```
+
+
+#Dendrograms
+```{r dendrogram}
+par(mfrow = c(2,3))
+
+spe.ch.single <- hclust(spe.ch, method = "single")
+plot(spe.ch.single, main = "Single")
+
+spe.ch.complete <- hclust(spe.ch, method = "complete")
+plot(spe.ch.complete, main = "Complete")
+
+spe.ch.ward <- hclust(spe.ch, method = "ward.D")
+plot(spe.ch.ward, main = "Ward.D")
+
+spe.ch.average <- hclust(spe.ch, method = "average")
+plot(spe.ch.average, main = "Average")
+
+spe.ch.centroid <- hclust(spe.ch, method = "centroid")
+plot(spe.ch.centroid, main = "Centroid")
+
+spe.ch.median <- hclust(spe.ch, method = "median")
+plot(spe.ch.median, main = "Median")
+```
+
+##Which method is better ?
+###Cophenetic correlation
+```{r cophenetic}
+spe.ch.ward.coph <- cophenetic(spe.ch.ward)
+cor(spe.ch, spe.ch.ward.coph) 
+
+spe.ch.single.coph <- cophenetic(spe.ch.single)
+cor(spe.ch, spe.ch.single.coph) 
+
+spe.ch.complete.coph <- cophenetic(spe.ch.complete)
+cor(spe.ch, spe.ch.complete.coph) 
+
+spe.ch.median.coph <- cophenetic(spe.ch.median)
+cor(spe.ch, spe.ch.median.coph) 
+
+spe.ch.centroid.coph <- cophenetic(spe.ch.centroid)
+cor(spe.ch, spe.ch.centroid.coph) 
+
+spe.ch.average.coph <- cophenetic(spe.ch.average)
+cor(spe.ch, spe.ch.average.coph)
+```
+
+UPGMA seems to be the best method. But this method don't always give the best result, the best solution
+
+###Shepard-like diagrams
+```{r Shepard}
+par(mfrow=c(2,2))
+
+plot(spe.ch, spe.ch.single.coph, xlab="Chord distance",
+     ylab="Cophenetic distance", asp=1, xlim=c(0,sqrt(2)), ylim=c(0,sqrt(2)),
+     main=c("Single linkage",paste("Cophenetic correlation ",
+                                   round(cor(spe.ch, spe.ch.single.coph),3))))
+abline(0,1)
+lines(lowess(spe.ch, spe.ch.single.coph), col="red")
+
+plot(spe.ch, spe.ch.complete.coph, xlab="Chord distance",
+     ylab="Cophenetic distance", asp=1, xlim=c(0,sqrt(2)), ylim=c(0,sqrt(2)),
+     main=c("Complete linkage", paste("Cophenetic correlation ",
+                                      round(cor(spe.ch, spe.ch.complete.coph),3))))
+abline(0,1)
+lines(lowess(spe.ch, spe.ch.complete.coph), col="red")
+
+plot(spe.ch, spe.ch.average.coph, xlab="Chord distance",
+     ylab="Cophenetic distance", asp=1, xlim=c(0,sqrt(2)), ylim=c(0,sqrt(2)),
+     main=c("UPGMA", paste("Cophenetic correlation ",
+                           round(cor(spe.ch, spe.ch.average.coph),3))))
+abline(0,1)
+lines(lowess(spe.ch, spe.ch.average.coph), col="red")
+
+plot(spe.ch, spe.ch.ward.coph, xlab="Chord distance",
+     ylab="Cophenetic distance", asp=1, xlim=c(0,sqrt(2)), ylim=c(0,max(spe.ch.ward$height)),
+     main=c("Ward clustering", paste("Cophenetic correlation ",
+                                     round(cor(spe.ch, spe.ch.ward.coph),3))))
+abline(0,1)
+lines(lowess(spe.ch, spe.ch.ward.coph), col="red")
+```
+
+Points have to be grouped
+Ward is better according to this method and quasi with cophenetic method
+
+##How many groups?
+###Fusion level values 
+```{r fusion_levels}
+par(mfrow=c(2,2))
+summary(spe.ch.single)  #List of available results
+
+plot(spe.ch.single$height, nrow(spe):2, type="S",
+     main="Fusion levels - Chord - Single",
+     ylab="k (number of clusters)", xlab="h (node height)", col="grey")
+text(spe.ch.single$height, nrow(spe):2, nrow(spe):2, col="red", cex=0.8)
+
+plot(spe.ch.complete$height, nrow(spe):2, type="S",
+     main="Fusion levels - Chord - Complete",
+     ylab="k (number of clusters)", xlab="h (node height)", col="grey")
+text(spe.ch.complete$height, nrow(spe):2, nrow(spe):2, col="red", cex=0.8)
+
+plot(spe.ch.average$height, nrow(spe):2, type="S",
+     main="Fusion levels - Chord - UPGMA",
+     ylab="k (number of clusters)", xlab="h (node height)", col="grey")
+text(spe.ch.average$height, nrow(spe):2, nrow(spe):2, col="red", cex=0.8)
+
+plot(spe.ch.ward$height, nrow(spe):2, type="S",
+     main="Fusion levels - Chord - Ward",
+     ylab="k (number of clusters)", xlab="h (node height)", col="grey")
+text(spe.ch.ward$height, nrow(spe):2, nrow(spe):2, col="red", cex=0.8)
+```
+
+h (node heigth) --> distance between groups
+The distance must be high between groups to become the good method
+See all the check-methods to decide
+Goal : the more parcimonious groupment with homogeneous groups
+
+###Rousseeuw quality index
+```{r Rousseuw index}
+Rousseuw(x = spe, dist = spe.ch, dendro = spe.ch.ward, k = 4)
+```
+
+Plot average silhouette widths (using Ward clustering) for all partitions
+except for the trivial partition in a single group (k=1).
+First, create an empty vector in which the asw values will be written
+good cluster number = high silhouette value
+
+Two clusters are the best choice but the second better choice is 4. 
+It is the better choice in ecology
+
+Choose 4 groups according to all methods
+```{r}
+k <- 4
+```
+
+```{r cutree}
+#Cut the tree
+spebc.single.g <- cutree(spe.ch.single, k)
+spebc.complete.g <- cutree(spe.ch.complete, k)
+spebc.average.g <- cutree(spe.ch.average, k)
+spebc.ward.g <- cutree(spe.ch.ward, k)
+
+table(spebc.average.g, spebc.ward.g) #To see common groups in both methods
+table(spebc.average.g, spebc.single.g) 
+table(spebc.average.g, spebc.complete.g) 
+table(spebc.single.g, spebc.complete.g)
+table(spebc.single.g, spebc.ward.g)
+table(spebc.ward.g, spebc.complete.g)
+```
+
+Agree for the majority but differencies.
+
+##How to quantify differencies?
+```{r}
+AdjRkl(spebc.single.g, spebc.complete.g) 
+AdjRkl(spebc.single.g, spebc.average.g) 
+AdjRkl(spebc.single.g, spebc.ward.g)
+AdjRkl(spebc.ward.g, spebc.complete.g)
+AdjRkl(spebc.ward.g, spebc.average.g) 
+AdjRkl(spebc.average.g, spebc.complete.g)
+```
+
+The more is the index, the more the methods are confusive
+Ward and Complete give very similar results
+
+##Final partition
+```{r final_partition}
+silouhette_plot(spe, spe.ch, spe.ch.ward, 4)
+```
+
+Higher is the coefficient, better is
+High coefficient : homogeneous group
+Low coefficient : no homogeneous but they have to be placed somewhere
+
+
+##Dendrogram with colors of groups
+```{r dendro_color}
+hcoplot(spe.ch.ward, spe.ch, k)
+```
+
+
+##Plot of the 4 clusters on a map of the Doubs river
+```{r map_doubs}
+cluster_map(spa, spebc.ward.g)
+```
+
+There is a continuity but with some problems
+Ecology can answer these problems : river cut off with a barrier, etc...
+
+#AGNES
+Agglomerative hierarchical clustering
+
+```{r agnes_ward}
+#Use Ward method according to check-methods above
+agnes1 <- agnes(spe.norm, method = "ward")
+par(mfrow = c(1,2))
+agnes1
+plot(agnes1)
+```
+
+Very good agglomerative coefficient close to 1
+2 well differenciated cluster (blank between)
+But we can differenciate other groups (littlest bar)
+
+```{r agnes_UPGMA}
+#Use method UPGM average - The best according to cophenetic correlation #
+agnes2 <- agnes(spe.norm, method = "average")
+par(mfrow = c(1,2))
+agnes2
+plot(agnes2)
+```
+
+Lower agglomerative coefficient
+
+##AGNES VS Ward Method
+```{r agnesVSward}
+#Choose the number of cluster
+clas.agnes <- cutree(agnes1,k)
+table(cutree(agnes1,k))
+table(cutree(agnes1,k), spebc.ward.g)
+AdjRkl(cutree(agnes1,k), spebc.ward.g)
+```
+
+Perfect confusive table - Coefficient = 1 - Same results
+
+```{r clusplot_agnes_ward}
+clusplot(spe.norm, clas.agnes, 
+         color = T, shade = T, labels = 2, lines = 1,
+         main = "Clusplot AGNES")
+clusplot(spe.norm, spebc.ward.g, 
+         color = T, shade = T, labels = 2, lines = 1,
+         main = "Clusplot Ward")
+```
+
+If two groups are linked by a line, there are different
+If not, there are not different
+Groups with lower within ss are well differenciated on the graph
+
+```{r}
+table(spebc.ward.g, clas.agnes)
+```
+
+Same graphics - Same results
+
+#DIANA
+Divisive hierarchical clustering
+
+```{r diana_euclidian}
+diana1 <- diana(spe.norm, metric = "euclidian")
+par(mfrow = c(1,2))
+diana1
+plot(diana1)
+```
+
+Coefficient lower than agnes cause diana group down.
+It is easier to aggregate than divide
+
+```{r diana_manhattan}
+diana1 <- diana(spe.norm, metric = "manhattan")
+par(mfrow = c(1,2))
+diana1
+plot(diana1)
+```
+
+
+##DIANA VS AGNES & Ward Method
+
+```{r dianaVSward}
+clas.diana <- cutree(diana1,k)
+table(clas.diana)
+table(spebc.ward.g, clas.diana) #DIANA VS Ward 
+table(clas.agnes, clas.diana) #DIANA VS AGNES
+```
+
+Same results because Ward and AGNES give the same results
+Aggree with the majority but some differencies
+
+```{r}
+clusplot(spe.norm, clas.diana, color = T, shade = T, labels = 2, lines = 1,
+         main = "Clusplot DIANA")
+```
+
+```{r}
+AdjRkl(clas.diana, spebc.ward.g)
+```
+
+```{r}
+#In the same table
+clas.all <- cbind(spebc.ward.g, clas.agnes, clas.diana)
+clas.all
+```
+
+#kmeans
+Minimize the sum of squares from points to cluster centres
+Very sensitive to the initial centres, choose a nstart > 1
+nstart -> avoid biaised center position by choosen many times
+
+```{r kmeans}
+spe.kmeans <- kmeans(spe.norm, centers = 4, nstart = 100)
+spe.kmeans
+```
+
+cluster sum of squares -> closer to 0 is an homogeneous group
+
+```{r kmeans_objects}
+#Different objects
+spe.kmeans$cluster
+spe.kmeans$centers
+spe.kmeans$totss
+spe.kmeans$withinss
+spe.kmeans$tot.withinss
+spe.kmeans$betweenss #totss - tot.withinss
+spe.kmeans$iter
+```
+
+
+##kmeans VS Ward
+
+```{r kmeansVSward}
+table(spe.kmeans$cluster, spebc.ward.g)
+#Agree except with one
+
+cbind(spe.kmeans$cluster, spebc.ward.g)
+#See which individuals are not classified in the same group
+
+AdjRkl(spebc.ward.g, spe.kmeans$cluster)
+#Very close to 1 --> Method agree
+
+clusplot(spe.norm, spe.kmeans$cluster, color = T, shade = T, labels = 2, lines = 1)
+#Same graph as Ward method
+```
+
+
+
+##Plot of the 4 k-means clusters on a map of the Doubs river
+
+```{r}
+cluster_map(spa, spe.kmeans$cluster)
+```
+
+
+## CascadeKM - Kmeans partitioning
+Wrapper of the kmeans function. Creates several partitions
+forming a cascade from a small to a large number of groups
+
+```{r KM}
+spe.KM.cascade <- cascadeKM(spe.norm, inf.gr = 2, sup.gr = 10, iter = 100, criterion = "ssi")
+par(mfrow = c(1,1))
+plot(spe.KM.cascade, sortg = T)
+```
+
+If you want two groups -> horizontal line from two groups (y axis) 
+and see how many objects are classed into two groups
+If you want four groups -> same method
+Choose the number of cluster where the ssi are higher --> well diferenciated groups
+Here : 3 but is it really better than 4 groups? Need knowledge in ecology
+
+##ratio between sum of squares
+```{r KM_sumsquares}
+summary(spe.KM.cascade)
+names(spe.KM.cascade)
+spe.KM.cascade$results
+ssi.sse <- spe.KM.cascade$results[2,]/spe.KM.cascade$results[1,]*100
+barplot(ssi.sse) 
+#Ratio must be lowest as possible
+```
+
+##Repartition of sites
+```{r KM_repartition}
+spe.KM.cascade$partition
+```
+
+
+#Partitioning Around Medoids - PAM
+A more robust version of kmeans
+
+```{r PAM}
+spe.pam <- pam(spe.norm, 4, diss = F, metric = "euclidian", stand = F)
+par(mfrow=c(1,2))
+plot(spe.pam)
+spe.pam
+```
+
+##PAM VS kmeans & Ward method
+
+```{r PAMvskmeansvsward}
+table(spe.pam$clustering, spe.kmeans$cluster)
+AdjRkl(spe.pam$clustering, spe.kmeans$cluster)
+AdjRkl(spe.pam$clustering, spebc.ward.g)
+
+clusplot(spe.norm, spe.pam$clustering, color = T, shade = T, labels = 2, lines = 1)
+#All groups are well differenciated with PAM
+```
+
+##Choice of the number of clusters with PAM
+
+```{r}
+Rousseuw_PAM(spe, spe.ch, k = k)
+```
+
+3 or 4 groups --> 4 is often the best choice in ecology
+
+## Plot of the 4 PAM clusters on a map of the Doubs river
+```{r}
+cluster_map(spa, spe.pam$cluster)
+```
+
+
+# Crossed with the environment table
+##Prepare data kmeans
+
+```{r}
+par(mfrow = c(2,2))
+boxplot(sqrt(env$alt) ~ spe.kmeans$cluster, 
+        main = "Altitude", las = 1, ylab = "sqrt(alt)", col = 2:5, varwidth = T)
+boxplot(log(env$slo) ~ spe.kmeans$cluster, 
+        main = "Slope", las = 1, ylab = "sqrt(slo)", col = 2:5, varwidth = T)
+boxplot(env$oxy ~ spe.kmeans$cluster, 
+        main = "Oxygen", las = 1, ylab = "sqrt(oxy)", col = 2:5, varwidth = T)
+boxplot(sqrt(env$amm) ~ spe.kmeans$cluster, 
+        main = "Ammonium", las = 1, ylab = "sqrt(amm)", col = 2:5, varwidth = T)
+```
+
+
+##Prepare data PAM
+```{r}
+boxplot(sqrt(env$alt) ~ spe.pam$clustering, 
+        main = "Altitude", las = 1, ylab = "sqrt(alt)", col = 2:5, varwidth = T)
+boxplot(log(env$slo) ~ spe.pam$clustering, 
+        main = "Slope", las = 1, ylab = "sqrt(slo)", col = 2:5, varwidth = T)
+boxplot(env$oxy ~ spe.pam$clustering, 
+        main = "Oxygen", las = 1, ylab = "sqrt(oxy)", col = 2:5, varwidth = T)
+boxplot(sqrt(env$amm) ~ spe.pam$clustering, 
+        main = "Ammonium", las = 1, ylab = "sqrt(amm)", col = 2:5, varwidth = T)
+```
+
+Visualize some gradients
+
+##Normality test
+```{r normality}
+shapiro.test(resid(lm(sqrt(env$alt) ~ as.factor(spe.kmeans$cluster)))) #NS
+shapiro.test(resid(lm(log(env$slo) ~ as.factor(spe.kmeans$cluster)))) #NS
+shapiro.test(resid(lm(env$oxy ~ as.factor(spe.kmeans$cluster)))) #NS
+shapiro.test(resid(lm(sqrt(env$amm) ~ as.factor(spe.kmeans$cluster)))) #NS
+```
+
+##Homoscedasticity
+```{r homoscedasticity}
+bartlett.test(sqrt(env$alt), as.factor(spe.kmeans$cluster)) #Non
+bartlett.test(log(env$slo), as.factor(spe.kmeans$cluster)) #NS
+bartlett.test(env$oxy, as.factor(spe.kmeans$cluster)) #NS
+bartlett.test(sqrt(env$amm), as.factor(spe.kmeans$cluster)) #NS
+```
+
+##Which variable explain the clusters - Test 
+```{r test}
+summary(aov(log(env$slo) ~ as.factor(spe.kmeans$cluster))) #Oui
+summary(aov(env$oxy ~ as.factor(spe.kmeans$cluster))) #Oui
+summary(aov(sqrt(env$amm) ~ as.factor(spe.kmeans$cluster))) #Oui
+kruskal.test(sqrt(env$alt) ~ as.factor(spe.kmeans$cluster)) #Oui
+```
+
+##Graphics
+```{r multibox}
+datslo <- as.data.frame(cbind(log(env$slo), spe.kmeans$cluster))
+names(datslo) <- c("slo", "kmean.cl")
+datslo
+multcompBoxplot(slo ~ kmean.cl, data = datslo)
+#Two groups differenciated
+
+datalt <- as.data.frame(cbind(sqrt(env$alt), spe.kmeans$cluster))
+names(datalt) <- c("alt", "kmean.cl")
+datalt
+multcompBoxplot(alt ~ kmean.cl, data = datalt)
+#Two or three groups well differenciated
+
+datoxy <- as.data.frame(cbind(env$oxy, spe.kmeans$cluster))
+names(datoxy) <- c("oxy", "kmean.cl")
+datoxy
+multcompBoxplot(oxy ~ kmean.cl, data = datoxy)
+#Three groups well differenciated
+
+datamm <- as.data.frame(cbind(sqrt(env$amm), spe.kmeans$cluster))
+names(datamm) <- c("amm", "kmean.cl")
+datamm
+multcompBoxplot(amm ~ kmean.cl, data = datamm)
+#Three groups well differenciated
+```
+
+Environment represent the river course
+Downstream and upstream caracteristics differenciate groups
+
+##Kmeans abundance
+Species that represent each groups are species 
+with a frecuency higher than the mean
+
+```{r}
+abundant_groups(spe, spe.kmeans$cluster)
+```
+
+###Mean species abundances of the four groups
+```{r}
+group1 <- round(sort(abundant_groups(spe, spe.kmeans$cluster)[,1], decreasing=TRUE), 2)
+group2 <- round(sort(abundant_groups(spe, spe.kmeans$cluster)[,2], decreasing=TRUE), 2)
+group3 <- round(sort(abundant_groups(spe, spe.kmeans$cluster)[,3], decreasing=TRUE), 2)
+group4 <- round(sort(abundant_groups(spe, spe.kmeans$cluster)[,4], decreasing=TRUE), 2)
+```
+
+###Species with abundances greater than group mean species abundance
+
+```{r}
+group1.domin <- which(group1>mean(group1))
+group1
+group1.domin
+#7 species
+
+group2.domin <- which(group2>mean(group2))
+group2
+group2.domin
+#12 species - Redundant with group 1
+
+group3.domin <- which(group3>mean(group1))
+group3
+group3.domin
+#5 species 
+
+group4.domin <- which(group4>mean(group1))
+group4
+group4.domin
+#22 species
+```
+
+
+##Species indicator values (Dufrene and Legendre)
+Divide the sites into 4 groups depending on the distance to the source of the river
+
+```{r}
+indicator(spe, env, k)
+```
+
+##Export the result to a CSV file (to be opened in a spreadsheet)
+```{r csv_indicator}
+write.csv(indicator(spe, env, k), "IndVal-das.csv")
+```
+
+#Fanny
+Fuzzy Analysis Clustering
+
+##iris
+```{r fanny_iris}
+fanny1 <- fanny(iris.var, k = 3, diss = F)
+fanny1
+par(mfrow = c(1,2))
+plot(fanny1)
+```
+One group well differenciated
+More difficult for the others
+
+###Plot membership
+```{r}
+par(mfrow = c(1,1))
+plot(c(1:150), fanny1$membership[,1], type = "l", col = "blue")
+lines(c(1:150), fanny1$membership[,2], type = "l", col = "red")
+lines(c(1:150), fanny1$membership[,3], type = "l", col = "green")
+```
+See the probability of an individual to be in a cluster
+
+```{r magicbox}
+s3d <- scatterplot3d(fanny1$membership, color = fanny1$cluster, type = "h", angle = 100, scale.y = 0.7, pch = 16, main = "Pertinence")
+plot3d(fanny1$membership, col = fanny1$cluster)
+```
+3D representations
+
+##Doubs
+```{r fanny_doub}
+fanny2 <- fanny(spe.norm, k = 4, diss = F)
+fanny2
+par(mfrow = c(1,2))
+plot(fanny2)
+
+par(mfrow = c(1,1))
+plot(c(1:29), fanny2$membership[,1], type = "l", col = "blue")
+lines(c(1:29), fanny2$membership[,2], type = "l", col = "red")
+lines(c(1:29), fanny2$membership[,3], type = "l", col = "green")
+lines(c(1:29), fanny2$membership[,4], type = "l", col = "black")
+
+plot3d(fanny2$membership, col = fanny2$cluster, type = "s")
+```
+
+
+###Plot of the 4 Fanny clusters on a map of the Doubs rive
+```{r}
+cluster_map(spa, fanny2$cluster)
+```
+
+#Cmeans
+Fuzzy version of kmeans
+
+##Iris
+```{r cmeans_iris}
+cmeans1 <- cmeans(iris.var, 3 , 50)
+cmeans1
+cmeans1$membership
+
+plot3d(cmeans1$membership, col = cmeans1$cluster, type = "p")
+
+plot(iris, col = cmeans1$cluster)
+plot(iris, col = iris$Species)
+```
+
+Compare the cluster with the real species
+
+##Doubs
+
+```{r cmeans_doubs}
+cmeans2 <- cmeans(spe.norm, 4 , 50)
+cmeans2
+cmeans2$membership
+
+plot3d(cmeans2$membership, col = cmeans2$cluster, type = "s")
+```
+
+###Plot of the 4 cmeans clusters on a map of the Doubs rive
+```{r}
+cluster_map(spa, cmeans2$cluster)
+```
+
+#Clara
+##Prepare data
+
+```{r clara_morpho}
+morpho <- lascaux$morpho
+
+clara1 <- clara(lascaux$morpho, k = 5)
+clara1
+par(mfrow = c(1,2))
+plot(clara1)
+
+table(clara1$clustering)
+```
+
+
+#SOM
+##Iris
+SOM Tools Box better with Matlab - But R can do it too
+But it's ugly - maybe#
+
+somgrid = size of the map, normally at least 5*sqrt(n)
+
+```{r SOM_iris}
+set.seed(700) #the random number always start from this point
+sqrt(150)*5 #150 individuals in Iris
+somiris <- som(as.matrix(iris[,1:4]), grid = somgrid(7,9,"hexagonal")) #or rectangular for less neighbors
+names(somiris)
+```
+
+###Graphics map
+```{r SOM_map}
+par(mfrow = c(1,1))
+par(mfrow = c(2,2))
+plot(somiris, type = "codes")
+#All flower types possible according to the data
+
+plot(somiris, type = "counts")
+#How many individuals in each flower type
+
+labiris <- c(rep("s", 50), rep("e", 50), rep ("i", 50))
+plot(somiris, type = "mapping", labels = labiris)
+#Which species in each flower type
+
+plot(somiris, type = "mapping", pch = rep(1:3, rep (50,3)), col = rep(1:3, rep (50, 3)))
+#Other representation of the species
+```
+
+###Plot a dendrogram with Ward method
+```{r}
+par(mfrow = c(1,1))
+h1 <-  hclust(dist(somiris$codes), method = "ward.D")
+plot(h1)
+
+plot(somiris, "mapping", pch = rep(1:3, rep (50,3)), 
+     col = rep(1:3, rep (50, 3)), bgcol = cutree(h1,3)+4)
+#Bgcol = background color --> Represent the groups determined by hclust
+
+som.predict <- predict(somiris, trainY = factor(iris[,5]))
+table(iris[,5], som.predict$prediction)
+AdjRkl(iris[,5], som.predict$prediction)
+#The method is very close to the real species
+```
+
+##Doubs 
+```{r}
+set.seed(700)
+somdoubs <- som(as.matrix(spe.norm), grid = somgrid(4,7,"hexagonal"))
+
+plot(somdoubs, type = "codes")
+plot(somdoubs, type = "counts")
+plot(somdoubs, type = "quality")
+plot(somdoubs, type = "mapping", labels = factor(rep(1:29,1)))
+
+par(mfrow = c(1,1))
+hdoubs <-  hclust(dist(somdoubs$codes), method = "ward.D")
+plot(hdoubs)
+plot(somdoubs, "mapping", labels = factor(rep(1:29,1)), bgcol = cutree(hdoubs,4)+4)
+```
+
+###SOM vs All
+
+```{r SOMvskmeans}
+som.predict.doubs.k <- predict(somdoubs, trainY = spe.kmeans$cluster)
+table(spe.kmeans$cluster, som.predict.doubs.k$prediction)
+AdjRkl(spe.kmeans$cluster, som.predict.doubs.k$prediction)
+```
+
+```{r SOMvsagnes}
+som.predict.doubs.a <- predict(somdoubs, trainY = clas.agnes)
+table(clas.agnes, som.predict.doubs.a$prediction)
+AdjRkl(clas.agnes, som.predict.doubs.a$prediction)
+```
+
+```{r SOMvsdiana}
+som.predict.doubs.d <- predict(somdoubs, trainY = clas.diana)
+table(clas.diana, som.predict.doubs.d$prediction)
+AdjRkl(clas.diana, som.predict.doubs.d$prediction) 
+```
+
+```{r SOMvsPAM}
+som.predict.doubs.d <- predict(somdoubs, trainY = spe.pam$cluster)
+table(spe.pam$cluster, som.predict.doubs.d$prediction)
+AdjRkl(spe.pam$cluster, som.predict.doubs.d$prediction)
+```
+
+```{r SOMvscmeans}
+som.predict.doubs.d <- predict(somdoubs, trainY = cmeans2$cluster)
+table(cmeans2$cluster, som.predict.doubs.d$prediction)
+AdjRkl(cmeans2$cluster, som.predict.doubs.d$prediction)
+```
+

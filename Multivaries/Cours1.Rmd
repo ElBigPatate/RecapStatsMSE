@@ -1,0 +1,125 @@
+---
+title: "Multivariée - Cours 1"
+output: html_document
+---
+
+#Library
+```{r library}
+library(ade4)
+library(MASS)
+library(vegan)
+```
+
+#Rappel - Notion de distance
+```{r matrice_distance}
+data(jv73)
+names(jv73)
+str(jv73)
+boxplot(jv73$morpho)
+
+d <- dist(scale(jv73$morpho))
+```
+
+#Classification hiérarchique
+
+```{r dendrograms}
+dendro.ward <- hclust(d, method = "ward.D")
+dendro.complete <- hclust(d, method = "complete")
+dendro.average <- hclust(d, method = "average")
+dendro.single <- hclust(d, method = "single")
+```
+
+```{r plot_dendro}
+par(mfrow=c(2,2))
+plot(dendro.ward, hang = -1)
+plot(dendro.complete, hang = -1)
+plot(dendro.average, hang = -1)
+plot(dendro.single, hang = -1)
+```
+
+##Choisir le meilleur critère
+```{r cophenetic}
+d.ward = cophenetic(dendro.ward)
+d.complete = cophenetic(dendro.complete)
+d.average = cophenetic(dendro.average)
+d.single = cophenetic(dendro.single)
+
+cor(d.ward, d)
+cor(d.complete, d)
+cor(d.average, d)
+cor(d.single, d)
+
+par(mfrow=c(1,1))
+plot(dendro.average, hang = -1)
+```
+
+##Couper l'arbre en 3 groupes
+```{r cutree}
+G = cutree(dendro.average, 3)
+s.label(jv73$xy, contour = jv73$contour, incl=F)
+points(jv73$xy, col = G, pch = 18, cex = 3)
+```
+
+#Analyse discriminante linéaire (AFD)
+##Crabs
+```{r}
+data(crabs)
+attach(crabs)
+```
+
+##Nouvelle variable à 4 niveaux
+```{r}
+groupe <- sp:sex
+```
+
+##Fonction lda()
+```{r lda}
+afd1 = lda(groupe~FL+RW+CL+CW+BD)
+afd1
+```
+
+##Qualité du classement : validation par jackknife
+```{r jackknife}
+afd2 = lda(groupe~FL+RW+CL+CW+BD, CV =T)
+afd2
+table(groupe, afd2$class)
+```
+
+##Fonction discrimin()
+```{r discrimin}
+afd3 = discrimin(dudi.pca(crabs[,4:8], scannf = FALSE, nf = 2), 
+                 groupe, scannf = FALSE, nf = 2)
+2
+2
+par(mfrow=c(1,2))
+s.arrow(afd3$fa)
+s.class(afd3$li, groupe)
+```
+
+##Validation par test de permutation
+```{r permutation}
+par(mfrow=c(1,1))
+rand = rtest(afd3, 1000)
+2
+rand
+plot(rand)
+```
+
+#Analyse discriminante quadratique
+##Fonction qda()
+```{r qda}
+qda1 = qda(groupe~FL+RW+CL+CW+BD, CV = T)
+table(groupe, qda1$class)
+```
+
+#Test de variance multivarié
+
+```{r tukey}
+mod = betadisper(d, G)
+anova(mod)
+TukeyHSD(mod)
+
+plot(mod)
+boxplot(mod)
+plot(TukeyHSD(mod))
+```

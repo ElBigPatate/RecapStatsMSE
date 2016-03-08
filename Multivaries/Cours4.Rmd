@@ -1,0 +1,116 @@
+---
+title: "Multivariée - Cours 4"
+output: html_document
+---
+
+#Library
+```{r library}
+library(vegan) #D'abord
+library(gstat) #D'abord
+library(ecodist) #Ensuite
+library(lattice) #Enfin
+library(sp)
+```
+
+
+#Data
+```{r}
+data(meuse)
+attach(meuse)
+plot(meuse$x, meuse$y, asp=1) #Cours d'eau en bordure Ouest
+```
+
+#Corrélation entre matrices de distance
+```{r}
+Distgeo = dist(meuse[,1:2])
+Distzinc = dist(meuse$zinc)
+```
+
+##Test Mantel
+```{r}
+mantel(Distzinc, Distgeo, permutation = 1000)
+```
+
+##Corrélogramme de Mantel
+```{r}
+correlo = mgram(Distzinc, Distgeo)
+plot(correlo)
+```
+
+#Variogramme empirique
+```{r}
+coordinates(meuse) <- ~x+y
+class(meuse)
+
+bubble(meuse, "zinc", main = "zinc (ppm)")
+
+v1 = variogram(log(zinc)~1, meuse, cloud = T)
+v2 = variogram(log(zinc)~1, meuse)
+plot(v1)
+plot(v2, plot.numbers = T)
+plot(v1, identify = T)
+
+plot(variogram(log(zinc)~1, meuse , width = 10))
+plot(variogram(log(zinc)~1, meuse , width = 100))
+```
+
+##Modéliser le variogramme
+```{r}
+v = variogram(log(zinc)~1, meuse)
+plot(v)
+```
+
+###Ajustement à la main
+```{r}
+vgm1 = vgm(0.6, "Sph", 1000, 0.05)
+vgm1
+plot(v, model = vgm1)
+```
+
+###Le meilleur ajustement
+```{r}
+vgmfit1 = fit.variogram(v,vgm1)
+vgmfit1
+plot(v, model = vgmfit1)
+
+vgmfit2 = fit.variogram(v, vgm(0.6, "Exp", 1000, 0.05))
+plot(v, model = vgmfit2)
+
+vgmfit3 = fit.variogram(v, vgm(0.6, "Gau", 1000, 0.05))
+plot(v, model = vgmfit3)
+
+attr(vgmfit1, "SSErr")
+attr(vgmfit2, "SSErr")
+attr(vgmfit3, "SSErr")
+```
+
+#Krigeage
+```{r}
+data(meuse.grid)
+plot(meuse.grid[,1:2])
+coordinates(meuse.grid) <- ~x+y
+
+kr = krige(log(zinc) ~ 1, meuse, newdata = meuse.grid, model = vgmfit1)
+```
+
+##Interpolations (valeurs prédites)
+```{r}
+levelplot(var1.pred ~ x+y, as.data.frame(kr), aspect ="iso", main = "predictions")
+```
+
+##Erreurs
+```{r}
+levelplot(var1.var ~ x+y, as.data.frame(kr), aspect ="iso", main = "errors")
+```
+
+##Qualité du krigeage
+```{r}
+x = krige.cv(log(zinc) ~ 1, meuse, vgmfit1, nfold = 5)
+plot(x$var1.pred, x$observed)
+abline(0,1)
+cor(x$var1.pred, x$observed)^2
+
+bubble(x, "residual", main = "log(zinc) : 5-fold CV residuals")
+```
+
+

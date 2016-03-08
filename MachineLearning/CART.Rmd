@@ -1,0 +1,87 @@
+---
+title: "CART"
+output: html_document
+---
+
+#Library
+```{r library}
+library(MASS)
+library(irr)
+library(epibasix)
+library(vcd)
+library(ade4)
+library(rpart)
+library(e1071)
+library(randomForest)
+library(pls) 
+library(nnet)
+library(AMORE)
+library(FactoMineR)
+library(mgcv)
+library(car) 
+library(gam)
+library(spacemakeR)
+library(packfor)
+library(AEM)
+library(vegan)
+library(ROCR)
+```
+
+#Data rpjdl
+##Prepare
+```{r rpjdl}
+data(rpjdl)
+fau <- rpjdl$fau
+sr.rpjdl <- apply(fau, 1, sum) #Richesse spécifique
+fau.norm <- decostand(fau, "normalize")
+mil.norm <- decostand(rpjdl$mil, "normalize")
+tm <- fau$TM
+sr.rpjdl <- apply(fau, 1, sum) #Richesse spécifique
+```
+
+##Sample
+```{r sample_select}
+set.seed(201)
+samp=sample(1:length(sr.rpjdl), length(sr.rpjdl)/4)
+train.x=mil.norm[-samp, ] #X variables
+test.x=mil.norm[samp, ] #Data for verification
+train.y=sr.rpjdl[-samp] #Y variables
+test.y=sr.rpjdl[samp]
+```
+
+##CART
+```{r tree}
+sr.rpjdl.rpart <- rpart(train.y ~., train.x)
+plot(sr.rpjdl.rpart, margin = 0.12) ; text(sr.rpjdl.rpart, use.n =T)
+plotcp(sr.rpjdl.rpart) #No overlearning but difficult to choose the branch number
+```
+
+```{r cuttree}
+sr.rpjdl.rpart.cut <- prune(sr.rpjdl.rpart, cp = 0.033)
+plot(sr.rpjdl.rpart.cut, margin = 0.12) ; text(sr.rpjdl.rpart, use.n =T)
+
+sr.rpjdl.rpart.cut.0.066 <- prune(sr.rpjdl.rpart, cp = 0.066)
+plot(sr.rpjdl.rpart.cut.0.066, margin = 0.12) ; text(sr.rpjdl.rpart, use.n =T)
+```
+
+```{r prediction}
+sr.rpjdl.rpart.pred <- predict(sr.rpjdl.rpart, test.x)
+sr.rpjdl.rpart.pred.cut <- predict(sr.rpjdl.rpart.cut, test.x)
+sr.rpjdl.rpart.pred.cut.0.066 <- predict(sr.rpjdl.rpart.cut.0.066, test.x)
+
+
+plot(test.y, sr.rpjdl.rpart.pred, clim = c(3,20), ylim = c(3,20),
+     main = "Prediction of CART") ; abline(0,1)
+cor(test.y, sr.rpjdl.rpart.pred)^2
+
+plot(test.y, sr.rpjdl.rpart.pred.cut, clim = c(3,20), ylim = c(3,20),
+     main = "Prediction of CART") ; abline(0,1) #Number of lines = Number of branches
+cor(test.y, sr.rpjdl.rpart.pred.cut)^2
+
+plot(test.y, sr.rpjdl.rpart.pred.cut.0.066, clim = c(3,20), ylim = c(3,20),
+     main = "Prediction of CART") ; abline(0,1) 
+cor(test.y, sr.rpjdl.rpart.pred.cut.0.066)^2
+```
+
+
+

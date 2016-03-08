@@ -1,0 +1,387 @@
+---
+title: "ANN"
+output: html_document
+---
+
+```{r library}
+library(MASS)
+library(irr)
+library(epibasix)
+library(vcd)
+library(ade4)
+library(rpart)
+library(e1071)
+library(randomForest)
+library(pls) 
+library(nnet)
+library(AMORE)
+library(FactoMineR)
+library(mgcv)
+library(car) 
+library(gam)
+library(spacemakeR)
+library(packfor)
+library(AEM)
+library(vegan)
+library(ROCR)
+```
+
+#Fonctions utiles
+##GarsonGoh
+Contribution relative de chaque prédicteur
+```{r garsongoh}
+GarsonGoh = function(mod,inputs,graph = T)
+{
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
+# Cette fonction calcule la contribution relative de chaque prédicteur       #
+# sur la (les) réponse(s)                                                    #
+# Elle est basée sur l'algorithme de Garson, modifié par la suite par Gevrey #
+# (2003) et consiste en un partitionnement des poids de connection           #
+#                                                                            #
+# Entrée :                                                                   #
+#    mod : modèle construit (réseau de neurone avec l'algorithme MLP-BP)     #
+#    inputs : prédicteurs ayant servi à la construction du modèle            #
+#             et pour lesquels on souhaite déterminer la contribution        #
+#             relative                                                       #
+#    graph : si T, un diagramme en bâtons est alors affiché, sur lequel      #
+#            les importances relatives de chaque prédicteur sont             #
+#            représentées                                                    #
+# Sorties :                                                                  #
+#    RI : Importance (contribution) relative des variables (en %)            #
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
+   ni = length(mod$net$layers[[1]]) # ni : nb de neurones de la couche d'entrée
+   nh = length(mod$net$layers[[2]]) # nh : nb de neurones de la couche cachée
+   no = length(mod$net$layers[[3]]) # no : nb de neurones de la couche de sortie
+   W1 = matrix(data = 0,nrow = ni,ncol = nh) # Matrice contenant les poids de
+                                             # connection des neurones cachés
+                                             # Dimensions : [ni x nh]
+   for (i in 1 : nh){
+      W1[,i] = mod$net$neurons[[i]]$weights
+   }
+   W1 = abs(W1) ; w1 = W1
+   W2 = matrix(data = 0,nrow = no,ncol = nh) # Matrice contenant les poids de
+                                             # connection des neurones de sortie
+                                             # Dimensions : [no x nh]
+   for (i in 1 : no){
+         W2[i,] = mod$net$neurons[[i+nh]]$weights
+   }
+   W2 = abs(W2) ; w2 = t(W2)
+   p = matrix(data = 0,nrow = ni,ncol = nh) # Matrice contenant les produits
+                                            # des poids de connections
+                                            # Dimensions : [ni x nh]
+   for (i in 1 : ni){
+      for (j in 1 : nh){
+         for (k in 1 : no){
+            p[i,j] = p[i,j] + w1[i,j]*w2[i,k]
+         }
+      }
+   }
+   q = matrix(data = 0,nrow = ni,ncol = nh) # Matrice contenant les produits
+                                            # relatifs des poids de connections
+                                            # Dimensions : [ni x nh]
+   for (i in 1 : ni){
+      sumline = apply(p,2,sum)
+      for (j in 1 : nh){
+         q[i,j] = p[i,j]/sumline[j]
+      }
+   }
+   S = apply(q,1,sum) ; s = rep(0,ni) # Calcul des importances relatives
+   for (i in 1 : ni){
+      s[i] = (S[i]/sum(S))*100
+   }
+   s = rev(sort(s))
+   RI = as.data.frame(s)
+   rownames(RI) = colnames(inputs)
+   colnames(RI) = "RI (%)"
+   RI = round(RI,2)
+   # Diagramme en bâtons des importances relatives des variables
+   if (graph == T){
+      barplot(sort(s),names = colnames(inputs),horiz = T,col = "blue",
+              xlab = "Prédicteurs",ylab = "Contribution relative (%)")
+      title("'Weights method'")
+   }
+   return(RI)
+}
+```
+
+##PaD
+Contribution des variables
+```{r}
+PaD = function(mod,inputs,graphs = T)
+{
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
+# Cette fonction calcule la contribution des variables                    #
+# Elle est basée sur le calcul des dérivées partielles (Dimopoulos, 1995) #
+#                                                                         #
+# Entrées :                                                               #
+#    mod : modèle (réseau de neurones, fonction de transfert : sigmoïde)  #
+#    inputs : jeu d'apprentissage ayant servi à la construction du modèle #
+#    graphs : si T, les graphs des dérivées partielles pour chaques       #
+#             prédicteurs et le barplot des contributions relatives       #
+#             s'afficheront                                               #
+# Sorties :                                                               #
+#    RI : Importance (contribution) relative des variables (en %)         #
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
+   sigmoid = function(v)
+   {
+   #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
+   # Cette fonction simule la fonction de transfert neuronale 'Sigmoïde' #
+   # Elle est issue du package 'AMORE' qui est l'équivalente de la       #
+   # fonction de transfert 'LogSimoïde' du logiciel MATLAB               #
+   #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
+      a.sigmoid  = 1
+      f0 = 1/(1 + exp(- a.sigmoid * v))
+      return(a.sigmoid * f0 * (1-f0))
+      #return(a.sigmoid * exp(-a.sigmoid * v)/(1+exp(-a.sigmoid * v))^2)
+   } 
+   dat = inputs
+   ni = length(mod$net$layers[[1]]) # ni : nb de neurones de la couche d'entrée
+   nh = length(mod$net$layers[[2]]) # nh : nb de neurones de la couche cachée
+   no = length(mod$net$layers[[3]]) # no : nb de neurones de la couche de sortie            
+   W1 = matrix(data = 0,nrow = ni,ncol = nh) # Matrice contenant les poids de
+                                             # connection des neurones cachés
+                                             # Dimensions : [ni x nh]
+   for (i in 1 : nh){
+      W1[,i] = mod$net$neurons[[i]]$weights
+   }
+   W1 = abs(W1) ; W1 = t(W1)
+   W2 = matrix(data = 0,nrow = no,ncol = nh) # Matrice contenant les poids de
+                                             # connection des neurones de sortie
+                                             # Dimensions : [no x nh]
+   for (i in 1 : no){
+         W2[i,] = mod$net$neurons[[i+nh]]$weights
+   }
+   W2 = abs(W2) ; w2 = W2
+   
+   B1 = NULL # Vecteur contenant les biais associés aux connections 
+             # entre les neurones d'entrée et les neurones cachés
+             # Dimensions : [1 x nh]
+   for (i in 1 : nh){
+      B1 = c(B1,mod$net$neurons[[i]]$bias)
+   }
+   B2 = NULL # Vecteur contenant les biais associés aux connections
+             # entre les neurones cachés et le (les) neurones de sorties
+             # Dimensions : [1 x no]
+   for (i in 1 : no){
+         B2 = c(B2,mod$net$neurons[[i+nh]]$bias)
+   }   
+   dd = matrix(nrow = dim(dat)[1],ncol = dim(dat)[2]) ; 
+   inputs = t(inputs)
+   A1 = sigmoid((W1 %*% inputs)+B1) # Réponses des neurones cachés
+   A2 = sigmoid((W2 %*% A1)+B2) # Réponses des neurones de sorties
+   D = as.data.frame(A2 * (1-A2)) # Dérivée des neurones de sortie par rapport 
+                                  # aux neurones d'entrée
+   W2 = as.data.frame(W2)
+   Sd = NULL
+   for (k in 1 : ni){
+         result = 0 ; derivee = 0 ; ssd = 0
+            for (i in 1 : no){
+               for (j in 1 : nh){
+                  result = result + (W2[i,j] * (A1[j,] * (1-A1[j,])) * W1[j,k])
+               }
+               derivee = D[,i] * result
+            }
+         # Graph des dérivées partielles
+         if (graphs == T){
+            x11() ; plot(dat[,k],derivee,pch = 20,col = "blue",
+                         xlab = colnames(dat)[k],ylab = paste("D",
+                         colnames(dat)[k]))
+            title("Graph de Dérivées Partielles") ; abline(h = 0,col = "red")
+         }
+         dd[,k] = derivee  # Matrice contenant les dérivées partielles
+                           # Dimensions : [ni x N] (avec N : nb d'observations)
+         for (h in 1 : dim(dat)[1]){
+            ssd = ssd + (result[h]^2)
+         }
+         Sd = c(Sd,ssd) # Vecteur des sommes des dérivées au carré 
+                        # (=contributions)
+                        # Longueur : ni
+   }
+   som = sum(Sd)
+   contri = NULL
+   for (w in 1 : length(Sd)){
+       contri = c(contri,(Sd[w]/som)*100)
+   }
+   nom = colnames(dat) 
+   names(contri)=nom
+   contri = rev(sort(contri))
+   RI = as.data.frame(contri) # Contribution exprimée en %
+  
+   # colnames(RI) = "RI (%)"
+   RI = round(RI,2)
+   # Diagramme en bâtons des importances relatives des variables
+   if (graphs == T){
+      x11() ; barplot(sort(contri),horiz = T,col = "blue",names = colnames(dat),
+                      xlab = "Prédicteurs",ylab = "Contribution relative (%)")
+      title("'PaD method'")
+   }
+   return(RI)
+}
+```
+
+#Iris
+##Prepare data
+```{r iris}
+data(iris)
+
+#Transform Species into a disjonctive table
+sp.ann <- tab.disjonctif(iris[,5]) #In FactoMineR library
+
+species <- class.ind(c(rep("s", 50), rep("c", 50), rep("v", 50)) )
+```
+
+```{r iris_sample1}
+set.seed(127)
+samp.1 <- sample(1:nrow(iris), nrow(iris)/3)
+train.x.ann=iris[-samp.1, -5] #X variables
+test.x.ann=iris[samp.1, -5] #Data for verification
+train.y.ann=sp.ann[-samp.1,] #Y variables
+test.y.ann=sp.ann[samp.1, ]
+```
+
+```{r iris_sample2}
+set.seed(127)
+samp.2 <- sample(1:nrow(iris), nrow(iris)/4)
+train.x.new=iris[-samp.2, -5] #X variables
+test.x.new=iris[samp.2, -5] #Data for verification
+train.y.new=sp.ann[-samp.2, ] #Y variables
+test.y.new=sp.ann[samp.2, ]
+```
+
+##ANN nnet
+```{r iris_ANN_nnet}
+iris.ann <- nnet(train.x.ann, train.y.ann, size = 2, rang = 0.1, decay = 5e-4, max = 300)
+#size : number of neuron layer
+#The error goes down with the iteration
+#Weigths : 19 -> number of way to join neuron and neuron bias with species input
+```
+
+```{r iris_ANN_nnet_efficiency}
+test.cl <- function(true, pred) {
+  true <- max.col(true)
+  cres <- max.col(pred)
+  table(true, cres)
+}
+
+iris.ann.pred <- test.cl(species[samp.1,], predict(iris.ann, test.y.ann))
+```
+
+##ANN newff - Library AMORE
+###Composants
+```{r ANN_newff_composant}
+input <- train.x.new #Input
+target <- train.y.new
+net <- newff(n.neurons=c(4,5,3), learning.rate.global=1e-2, momentum.global=0.9,
+             error.criterium="LMS", Stao=NA, hidden.layer="tansig", 
+             output.layer="sigmoid", method="ADAPTgdwm")
+```
+
+###Commande
+```{r ANN_newff}
+iris.ann.new <- train(net, input, target, error.criterium="LMS", 
+                      report=TRUE, show.step=10, n.shows=1000 )
+plot(iris.ann.new$Merror, type = "l")
+```
+
+###Prediction
+```{r ANN_newff_prediction}
+net.pred <- sim(iris.ann.new$net, test.x.new)
+test.cl(test.x.new, net.pred)
+
+predtot = NULL
+for (i in 1 : nrow(net.pred)) {
+  if (net.pred[i,1] == max(net.pred[i,])) {
+    predtot = c(predtot, "setosa") } 
+  else {
+        if(net.pred[i,2] == max(net.pred[i,])){
+          predtot = c(predtot, "versicolor")} 
+        else {
+              if (net.pred[i,3] == max(net.pred[i,])){
+                predtot = c(predtot, "virginica")}
+              }
+        } 
+}
+predtot
+
+t.air <- table(predtot, iris[samp.2, 5])
+
+GarsonGoh(iris.ann.new, test.x.new)
+PaD(iris.ann.new, test.x.new) #Dérivée partielle
+```
+
+#Airquality
+```{r air}
+data(airquality)
+```
+
+##Prepare data
+```{r}
+air <- airquality[,1:4]
+air.na <- na.omit(air)
+air01 <- decostand(air.na, "normalize")
+```
+
+##Sample
+```{r air_sample}
+set.seed(135)
+air.samp <- sample(1:nrow(air01), nrow(air01)/2)
+
+train.x.air=air01[air.samp, -1] #X variables
+test.x.air=air01[-air.samp, -1] #Data for verification
+train.y.air=air01[air.samp, 1] #Y variables
+test.y.air=air01[-air.samp, 1]
+```
+
+##ANN nnet
+```{r air_ANN_nnet}
+air.ann <- nnet(train.y.air ~. , data=train.x.air, size = 2, rang = 0.1, decay = 5e-4, max = 500)
+plot(train.y.air, air.ann$fitted.values)
+abline(0,1)
+```
+
+```{r air_ANN_nnet_prediction}
+air.ann.pred <- predict(air.ann, test.x.air)
+plot(test.y.air, air.ann.pred)
+cor(test.y.air, air.ann.pred) #0.93
+```
+
+##ANN newff
+###Composantes
+```{r air_ANN_newff_composant}
+input <- train.x.air #Input
+target <- train.y.air
+net <- newff(n.neurons=c(3,2,1), learning.rate.global=1e-2, momentum.global=0.9,
+             error.criterium="LMS", Stao=NA, hidden.layer="tansig", 
+             output.layer="sigmoid", method="ADAPTgdwm")
+```
+
+###Commande
+```{r air_ANN_newff}
+air.new <- train(net, input, target, error.criterium="LMS", report=TRUE, show.step=10, n.shows=1000 )
+plot(air.new$Merror, type = "l")
+```
+
+```{r air_ANN_newff_prediction}
+air.net.pred <- sim(air.new$net, test.x.air)
+plot(input, air.net.pred, col="blue", pch="#")
+
+test.cl(test.x.air, air.net.pred)
+
+air.predtot = NULL
+for (i in 1 : nrow(air.net.pred)) {
+  if (air.net.pred[i,1] == max(air.net.pred[i,])) {
+    air.predtot = c(air.predtot, "setosa") } 
+  else {
+        if(air.net.pred[i,2] == max(air.net.pred[i,])){
+          air.predtot = c(air.predtot, "versicolor")} 
+        else {
+              if (air.net.pred[i,3] == max(air.net.pred[i,])){
+                air.predtot = c(air.predtot, "virginica")}
+              }
+        } 
+}
+air.predtot
+
+PaD(air.new, test.x.air) #Dérivée partielle
+```
+

@@ -1,0 +1,91 @@
+---
+title: "Random Forest"
+output: html_document
+---
+
+#Library
+```{r library}
+library(MASS)
+library(ade4)
+library(car) 
+library(vegan)
+library(class)
+library(randomForest)
+```
+
+#Iris
+```{r iris}
+data(iris)
+```
+
+##Prepare data
+```{r sample_3fold}
+set.seed(120)
+samp=sample(1:nrow(iris), nrow(iris)/3)
+train.x=iris[-samp, -5] #X variables
+test.x=iris[samp, -5] #Data for verification
+train.y=iris[-samp, 5] #Y variables
+test.y=iris[samp, 5]
+```
+
+##Random Forest
+Implements Breiman's random forest algorithm for classification and regression
+Can be used in unsupervised mode for assessing proximiting among data points
+
+```{r RF_iris}
+rf = randomForest(train.y ~. , data = train.x, importance = T) 
+rf
+plot(rf)
+rf$importance
+importance(rf)[,4:5] #Gini -> coef impurity
+varImpPlot(rf)
+```
+
+```{r RF_iris_efficiency}
+rpjdl.rf.prediction <- predict(rf, test.x)
+ftable(rpjdl.rf.prediction, test.y)
+
+kappa2(cbind(rpjdl.rf.prediction, test.y))
+Kappa(ftable(rpjdl.rf.prediction, test.y))
+AdjRkl(rpjdl.rf.prediction, test.y)
+agreementplot(table(rpjdl.rf.prediction, test.y))
+```
+
+#Data rpjdl
+##Prepare
+```{r rpjdl}
+data(rpjdl)
+fau <- rpjdl$fau
+fau.norm <- decostand(fau, "normalize")
+mil.norm <- decostand(rpjdl$mil, "normalize")
+tm <- fau$TM
+sr.rpjdl <- apply(fau, 1, sum) #Richesse spécifique
+```
+
+##Sample
+
+```{r sample_select}
+set.seed(201)
+samp=sample(1:length(sr.rpjdl), length(sr.rpjdl)/4)
+train.x=mil.norm[-samp, ] #X variables
+test.x=mil.norm[samp, ] #Data for verification
+train.y=sr.rpjdl[-samp] #Y variables
+test.y=sr.rpjdl[samp]
+```
+
+##RandomForest
+
+```{r RF_rpjdl}
+rf.rp = randomForest(train.y ~. , data = train.x, importance = T) 
+rf.rp
+plot(rf.rp)
+rf.rp$importance
+varImpPlot(rf.rp)
+```
+
+```{r RF_rpjdl_efficiency}
+rpjdl.rf.prediction <- predict(rf.rp, test.x)
+ftable(rpjdl.rf.prediction, test.y)
+plot(test.y, rpjdl.rf.prediction, xlim = c(0,20), ylim = c(0,20),
+     main = "Prediction of RandomForest") ; abline(0,1)
+```

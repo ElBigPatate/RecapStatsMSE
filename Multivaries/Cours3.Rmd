@@ -1,0 +1,118 @@
+---
+title: "Multivariée - Cours 3"
+output: html_document
+---
+
+#Library
+```{r library}
+library(ade4)
+library(MASS)
+library(vegan)
+library(ape)
+```
+
+
+#Co-structure de deux tableaux : analyse de co-inertie
+##Data doubs
+```{r}
+data(doubs)
+head(doubs)
+spe = doubs$fish
+mil = doubs$env
+```
+
+###Première approche : analyse séparé des deux tableaux
+```{r}
+pca1 = dudi.pca(mil, scannf = FALSE, nf = 2)
+
+pca2 = dudi.pca(spe, scale = F, scannf = FALSE, nf = 2)
+
+par(mfrow=c(1,2))
+scatter(pca1)
+scatter(pca2)
+```
+
+###Couplage des deux analyses
+```{r}
+coiner1 = coinertia(pca1, pca2, scannf = FALSE, nf = 2)
+s.arrow(coiner1$c1)
+s.arrow(coiner1$l1)
+```
+
+####Superposition des deux nuages de points
+```{r}
+par(mfrow=c(1,1))
+s.match(coiner1$mX, coiner1$mY)
+```
+
+####Vision d'ensemble 
+```{r}
+plot(coiner1)
+```
+
+####Test de la co-structure
+```{r}
+coiner1$RV
+testRV = RV.rtest(pca1$tab, pca2$tab, 1000)
+testRV
+plot(testRV)
+```
+
+#Principal Coordinates Analysis - PCoA
+##Data atlas
+```{r}
+data(atlas)
+tab01 = ifelse(atlas$birds>0,1,0)
+```
+
+###Matrices de distance entre sites
+```{r}
+d01 = dist(tab01, method= "binary")
+```
+
+###PCoA sur la matrice d01
+```{r}
+pcoa1 = pcoa(d01)
+pcoa1
+names(pcoa1)
+barplot(pcoa1$values$Eigenvalues)
+```
+
+###Représentations graphiques
+```{r}
+biplot(pcoa1)
+biplot(pcoa1, tab01)
+```
+
+#Non-metric multidimensional scaling - NMDS
+##Data varespec et varechem
+```{r}
+data(varespec)
+data(varechem)
+
+nmds = metaMDS(varespec)
+names(nmds)
+
+nmds$stress
+stressplot(nmds)
+```
+
+###Représentations graphiques
+```{r}
+plot(nmds)
+plot(nmds, type="n")
+points(nmds, display=c("sites"), pch=21, col = "red", bg = "yellow", cex =1.5)
+text(nmds, display="species", col = "blue")
+identify(ordiplot(nmds), "spec") 
+#Spotté pour écrire le texte des étiquettes voulue
+```
+
+
+###Liens avec les variables environnementales
+```{r}
+fit = envfit(nmds, varechem, perm=999)
+fit
+plot(nmds)
+plot(fit)
+plot(fit, p.max=0.05, col = "red")
+```
